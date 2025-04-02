@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+@keyframes progress {
+    from { width: 100%; }
+    to { width: 0%; }
+}
+
+@keyframes pop {
+    0% { transform: scale(1); }
+    90% { transform: scale(1); }
+    100% { transform: scale(1.2); opacity: 0; }
+}

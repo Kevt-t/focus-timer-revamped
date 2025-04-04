@@ -3,6 +3,7 @@ import { useSettings } from '../../context/SettingsContext';
 import ThemeSelector from './ThemeSelector';
 import TimerPresets from './TimerPresets';
 import NotificationSettings from './NotificationSettings';
+import DeveloperMode from './DeveloperMode';
 import Button from '../common/Button';
 
 const SettingsPanel: React.FC = () => {
@@ -41,6 +42,7 @@ const SettingsPanel: React.FC = () => {
               <ThemeSelector />
               <NotificationSettings />
               <TimerPresets />
+              <DeveloperMode />
             </div>
           </div>
         </div>

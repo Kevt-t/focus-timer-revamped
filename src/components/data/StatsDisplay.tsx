@@ -1,5 +1,5 @@
 import React from 'react';
-import { useData } from '../../context/DataContext';
+import { useData, SessionData } from '../../context/DataContext';
 
 const StatsDisplay: React.FC = () => {
   const { stats } = useData();
@@ -12,6 +12,12 @@ const StatsDisplay: React.FC = () => {
     totalFocusTime: 0,
     totalPauseTime: 0
   };
+  
+  // Get today's individual sessions
+  const todaySessions = stats.sessionHistory.filter(session => {
+    const sessionDate = new Date(session.startTime).toISOString().split('T')[0];
+    return sessionDate === today;
+  }).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()); // Sort by most recent first
   
   // Format time (seconds) to hours, minutes, and seconds
   const formatTime = (seconds: number): string => {
@@ -122,27 +128,126 @@ const StatsDisplay: React.FC = () => {
         </div>
       </div>
       
-      {stats.dailyStats.length > 0 && (
-        <div className="recent-activity mt-4">
-          <h3 className="text-lg font-medium mb-2 dark:text-white">Recent Activity</h3>
-          <div className="max-h-40 overflow-y-auto">
-            {stats.dailyStats.slice(0, 7).map(day => (
-              <div key={day.date} className="flex justify-between py-2 border-b dark:border-gray-700">
-                <div className="dark:text-white">
-                  {new Date(day.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+      <div className="recent-activity mt-4">
+        <h3 className="text-lg font-medium mb-2 dark:text-white">Today's Sessions</h3>
+        <div className="max-h-60 overflow-y-auto">
+          {todaySessions.length > 0 ? (
+            todaySessions.map(session => (
+              <div key={session.id} className="p-3 mb-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <div className="flex justify-between items-center mb-1">
+                  <div className="flex items-center">
+                    <span className={`mr-2 text-lg ${getSessionTypeIcon(session.type).color}`}>
+                      {getSessionTypeIcon(session.type).icon}
+                    </span>
+                    <span className="font-medium dark:text-white">
+                      {getSessionTypeLabel(session.type)}
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400">
+                    {formatTimeOfDay(session.startTime)}
+                  </div>
                 </div>
-                <div className="flex space-x-4">
-                  <div className="text-blue-600 dark:text-blue-400">{day.completedSessions} sessions</div>
-                  <div className="text-green-600 dark:text-green-400">{formatTime(day.totalFocusTime)}</div>
-                  <div className="text-red-600 dark:text-red-400">{formatTime(day.totalPauseTime)} paused</div>
+                
+                <div className="grid grid-cols-3 gap-2 text-sm">
+                  <div>
+                    <div className="text-gray-500 dark:text-gray-400">Duration</div>
+                    <div className="font-medium dark:text-white">{formatTime(session.duration)}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500 dark:text-gray-400">Focus Time</div>
+                    <div className="font-medium text-green-600 dark:text-green-400">
+                      {session.completed ? formatTime(session.duration - Math.floor(session.totalPausedTime / 1000)) : formatTime(0)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500 dark:text-gray-400">Pause Time</div>
+                    <div className="font-medium text-red-600 dark:text-red-400">
+                      {formatTime(Math.floor(session.totalPausedTime / 1000))}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Progress bar showing focus vs pause ratio */}
+                <div className="mt-2">
+                  <div className="relative h-2 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
+                    <div 
+                      className="absolute top-0 left-0 h-full bg-green-500 dark:bg-green-600"
+                      style={{
+                        width: session.completed ? 
+                          `${((session.duration - Math.floor(session.totalPausedTime / 1000)) / session.duration) * 100}%` : 
+                          '0%'
+                      }}
+                    ></div>
+                  </div>
+                </div>
+                
+                <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 flex justify-between">
+                  <div>
+                    {session.completed ? 
+                      <span className="text-green-500 dark:text-green-400">✓ Completed</span> : 
+                      <span className="text-red-500 dark:text-red-400">✗ Cancelled</span>
+                    }
+                  </div>
+                  <div>
+                    Efficiency: {session.completed ? `${calculateEfficiency(session)}%` : 'N/A'}
+                  </div>
                 </div>
               </div>
-            ))}
-          </div>
+            ))
+          ) : (
+            <div className="text-center py-6 text-gray-500 dark:text-gray-400">
+              <p>No sessions completed today.</p>
+              <p className="mt-2 text-sm">Start a focus session to track your progress!</p>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
+};
+
+// Helper functions for session display
+const getSessionTypeIcon = (type: string): { icon: string; color: string } => {
+  switch (type) {
+    case 'pomodoro':
+      return { icon: '🍅', color: 'text-red-500' };
+    case 'shortBreak':
+      return { icon: '☕', color: 'text-blue-500' };
+    case 'longBreak':
+      return { icon: '🌴', color: 'text-green-500' };
+    case 'custom':
+      return { icon: '⚙️', color: 'text-purple-500' };
+    default:
+      return { icon: '⏱️', color: 'text-gray-500' };
+  }
+};
+
+const getSessionTypeLabel = (type: string): string => {
+  switch (type) {
+    case 'pomodoro':
+      return 'Focus Session';
+    case 'shortBreak':
+      return 'Short Break';
+    case 'longBreak':
+      return 'Long Break';
+    case 'custom':
+      return 'Custom Session';
+    default:
+      return 'Session';
+  }
+};
+
+const formatTimeOfDay = (dateString: string): string => {
+  const date = new Date(dateString);
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
+const calculateEfficiency = (session: SessionData): number => {
+  const totalSessionTime = session.duration;
+  const pauseTime = Math.floor(session.totalPausedTime / 1000);
+  const focusTime = totalSessionTime - pauseTime;
+  
+  return Math.round((focusTime / totalSessionTime) * 100);
 };
 
 export default StatsDisplay;

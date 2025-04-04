@@ -1,5 +1,25 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
+// Achievement system types
+export interface AchievementTier {
+  level: number;
+  requirement: number;
+  reward: string;
+  progress: number;
+  unlocked: boolean;
+  unlockedAt: string | null;
+}
+
+export interface Achievement {
+  id: string;
+  title: string;
+  description: string;
+  metric: 'totalFocusTime' | 'currentStreak' | 'completedSessions' | 'dailySessions' | 'weeklySessions';
+  tiers: AchievementTier[];
+  currentTier: number;
+  icon: string;
+}
+
 // Define session data types
 export interface SessionData {
   id: string;
@@ -25,9 +45,81 @@ export interface UserStats {
   completedSessions: number;
   currentStreak: number;
   longestStreak: number;
+  totalFocusTime: number; // in seconds
   dailyStats: DailyStats[];
   sessionHistory: SessionData[];
+  achievements: Achievement[];
+  lastAchievementCheck: string | null;
 }
+
+// Achievement definitions
+const defaultAchievements: Achievement[] = [
+  {
+    id: 'focusMaster',
+    title: 'Focus Master',
+    description: 'Accumulate total focus time',
+    metric: 'totalFocusTime',
+    currentTier: 0,
+    icon: '⏱️',
+    tiers: [
+      { level: 1, requirement: 5 * 60, reward: 'Bronze Badge', progress: 0, unlocked: false, unlockedAt: null },
+      { level: 2, requirement: 15 * 60, reward: 'Silver Badge', progress: 0, unlocked: false, unlockedAt: null },
+      { level: 3, requirement: 30 * 60, reward: 'Gold Badge', progress: 0, unlocked: false, unlockedAt: null }
+    ]
+  },
+  {
+    id: 'streakChampion',
+    title: 'Streak Champion',
+    description: 'Maintain a daily streak',
+    metric: 'currentStreak',
+    currentTier: 0,
+    icon: '🔥',
+    tiers: [
+      { level: 1, requirement: 3, reward: 'Bronze Trophy', progress: 0, unlocked: false, unlockedAt: null },
+      { level: 2, requirement: 7, reward: 'Silver Trophy', progress: 0, unlocked: false, unlockedAt: null },
+      { level: 3, requirement: 14, reward: 'Gold Trophy', progress: 0, unlocked: false, unlockedAt: null }
+    ]
+  },
+  {
+    id: 'consistencyKing',
+    title: 'Consistency King',
+    description: 'Complete multiple sessions',
+    metric: 'completedSessions',
+    currentTier: 0,
+    icon: '👑',
+    tiers: [
+      { level: 1, requirement: 10, reward: 'Daily Tracker', progress: 0, unlocked: false, unlockedAt: null },
+      { level: 2, requirement: 20, reward: 'Weekly Insights', progress: 0, unlocked: false, unlockedAt: null },
+      { level: 3, requirement: 30, reward: 'Monthly Report', progress: 0, unlocked: false, unlockedAt: null }
+    ]
+  },
+  {
+    id: 'dailyDedication',
+    title: 'Daily Dedication',
+    description: 'Complete sessions in a single day',
+    metric: 'dailySessions',
+    currentTier: 0,
+    icon: '📅',
+    tiers: [
+      { level: 1, requirement: 3, reward: 'Focus Booster', progress: 0, unlocked: false, unlockedAt: null },
+      { level: 2, requirement: 5, reward: 'Productivity Pack', progress: 0, unlocked: false, unlockedAt: null },
+      { level: 3, requirement: 7, reward: 'Time Master Badge', progress: 0, unlocked: false, unlockedAt: null }
+    ]
+  },
+  {
+    id: 'weeklyWarrior',
+    title: 'Weekly Warrior',
+    description: 'Complete sessions in a single week',
+    metric: 'weeklySessions',
+    currentTier: 0,
+    icon: '🗓️',
+    tiers: [
+      { level: 1, requirement: 10, reward: 'Weekly Planner', progress: 0, unlocked: false, unlockedAt: null },
+      { level: 2, requirement: 20, reward: 'Efficiency Expert', progress: 0, unlocked: false, unlockedAt: null },
+      { level: 3, requirement: 30, reward: 'Productivity Champion', progress: 0, unlocked: false, unlockedAt: null }
+    ]
+  }
+];
 
 // Default stats
 const defaultStats: UserStats = {
@@ -35,8 +127,11 @@ const defaultStats: UserStats = {
   completedSessions: 0,
   currentStreak: 0,
   longestStreak: 0,
+  totalFocusTime: 0,
   dailyStats: [],
-  sessionHistory: []
+  sessionHistory: [],
+  achievements: defaultAchievements,
+  lastAchievementCheck: null
 };
 
 // Create the context
@@ -49,6 +144,11 @@ interface DataContextType {
   completeSession: () => void;
   cancelSession: () => void;
   resetStats: () => void;
+  checkAchievements: () => Achievement[];
+  getUnlockedAchievements: () => Achievement[];
+  getAchievementProgress: (achievementId: string) => number;
+  getNextAchievement: (achievementId: string) => AchievementTier | null;
+  fastForwardSessions: (numSessions: number, focusTimePerSession: number) => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -295,6 +395,22 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
     // Update daily stats
     updateDailyStats(completedSession);
     
+    // Check for achievements
+    const newAchievements = checkAchievements();
+    
+    // Notify about new achievements
+    if (newAchievements.length > 0) {
+      setTimeout(() => {
+        newAchievements.forEach(achievement => {
+          const tier = achievement.tiers[achievement.currentTier - 1];
+          if (tier) {
+            // We'll handle this notification in the UI
+            console.log(`Achievement unlocked: ${achievement.title} - Level ${tier.level}`);
+          }
+        });
+      }, 1000); // Delay to ensure the session completion notification shows first
+    }
+    
     // Clear current session
     setCurrentSession(null);
   };
@@ -361,16 +477,294 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
     });
   };
 
+  // Achievement system methods
+  const checkAchievements = (): Achievement[] => {
+    const now = new Date().toISOString();
+    const unlockedAchievements: Achievement[] = [];
+    
+    setStats(prev => {
+      const updatedAchievements = [...prev.achievements];
+      
+      // Process each achievement
+      updatedAchievements.forEach(achievement => {
+        // Get the current progress value based on the metric
+        let currentValue = 0;
+        
+        switch (achievement.metric) {
+          case 'totalFocusTime':
+            // Sum up all completed focus time
+            currentValue = prev.dailyStats.reduce((total, day) => total + day.totalFocusTime, 0);
+            break;
+          case 'currentStreak':
+            currentValue = prev.currentStreak;
+            break;
+          case 'completedSessions':
+            currentValue = prev.completedSessions;
+            break;
+          case 'dailySessions': {
+            // Get today's date in YYYY-MM-DD format
+            const today = new Date().toISOString().split('T')[0];
+            // Find today's stats
+            const todayStats = prev.dailyStats.find(day => day.date === today);
+            currentValue = todayStats ? todayStats.completedSessions : 0;
+            break;
+          }
+          case 'weeklySessions': {
+            // Get the start of the current week (Sunday)
+            const now = new Date();
+            const startOfWeek = new Date(now);
+            startOfWeek.setDate(now.getDate() - now.getDay());
+            startOfWeek.setHours(0, 0, 0, 0);
+            
+            // Count sessions in the current week
+            currentValue = prev.sessionHistory.filter(session => {
+              const sessionDate = new Date(session.startTime);
+              return sessionDate >= startOfWeek && session.completed;
+            }).length;
+            break;
+          }
+        }
+        
+        // Special handling for Daily Dedication achievement
+        if (achievement.id === 'dailyDedication') {
+          // For Daily Dedication, we want progressive unlocking where:
+          // Level 1: 3 sessions
+          // Level 2: 5 sessions (3+2)
+          // Level 3: 7 sessions (3+2+2)
+          
+          // Update progress for each tier based on current value
+          for (let i = 0; i < achievement.tiers.length; i++) {
+            const tier = achievement.tiers[i];
+            tier.progress = Math.min(currentValue, tier.requirement);
+            
+            // Check if this tier should be unlocked
+            if (!tier.unlocked && currentValue >= tier.requirement) {
+              tier.unlocked = true;
+              tier.unlockedAt = now;
+              achievement.currentTier = Math.max(achievement.currentTier, i + 1);
+              
+              // Add to the list of newly unlocked achievements
+              if (!unlockedAchievements.includes(achievement)) {
+                unlockedAchievements.push(achievement);
+              }
+            }
+          }
+        } else {
+          // Standard achievement handling for other achievements
+          for (let i = 0; i < achievement.tiers.length; i++) {
+            const tier = achievement.tiers[i];
+            
+            // Update progress
+            tier.progress = Math.min(currentValue, tier.requirement);
+            
+            // Check if this tier should be unlocked
+            if (!tier.unlocked && currentValue >= tier.requirement) {
+              tier.unlocked = true;
+              tier.unlockedAt = now;
+              achievement.currentTier = Math.max(achievement.currentTier, i + 1);
+              
+              // Add to the list of newly unlocked achievements
+              if (!unlockedAchievements.includes(achievement)) {
+                unlockedAchievements.push(achievement);
+              }
+            }
+          }
+        }
+      });
+      
+      return {
+        ...prev,
+        achievements: updatedAchievements,
+        lastAchievementCheck: now
+      };
+    });
+    
+    return unlockedAchievements;
+  };
+  
+  const getUnlockedAchievements = (): Achievement[] => {
+    return stats.achievements.filter(achievement => 
+      achievement.tiers.some(tier => tier.unlocked)
+    );
+  };
+  
+  const getAchievementProgress = (achievementId: string): number => {
+    const achievement = stats.achievements.find(a => a.id === achievementId);
+    if (!achievement) return 0;
+    
+    const currentTierIndex = achievement.currentTier;
+    const nextTierIndex = currentTierIndex < achievement.tiers.length - 1 
+      ? currentTierIndex + 1 
+      : achievement.tiers.length - 1;
+    
+    // Get the next tier for progress calculation
+    const nextTier = achievement.tiers[nextTierIndex];
+    
+    if (!nextTier) return 100; // All tiers completed
+    
+    // Calculate progress percentage toward next tier
+    let currentValue = 0;
+    switch (achievement.metric) {
+      case 'totalFocusTime':
+        currentValue = stats.dailyStats.reduce((total, day) => total + day.totalFocusTime, 0);
+        break;
+      case 'currentStreak':
+        currentValue = stats.currentStreak;
+        break;
+      case 'completedSessions':
+        currentValue = stats.completedSessions;
+        break;
+      case 'dailySessions': {
+        const today = new Date().toISOString().split('T')[0];
+        const todayStats = stats.dailyStats.find(day => day.date === today);
+        currentValue = todayStats ? todayStats.completedSessions : 0;
+        break;
+      }
+      case 'weeklySessions': {
+        const now = new Date();
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay());
+        startOfWeek.setHours(0, 0, 0, 0);
+        
+        currentValue = stats.sessionHistory.filter(session => {
+          const sessionDate = new Date(session.startTime);
+          return sessionDate >= startOfWeek && session.completed;
+        }).length;
+        break;
+      }
+    }
+    
+    // Special handling for Daily Dedication achievement
+    if (achievement.id === 'dailyDedication') {
+      // For Daily Dedication, we need to calculate progress differently
+      // Level 1: 0-3 sessions
+      // Level 2: 3-5 sessions
+      // Level 3: 5-7 sessions
+      
+      // If all tiers are completed
+      if (currentTierIndex >= achievement.tiers.length) {
+        return 100;
+      }
+      
+      // Calculate progress based on the current tier
+      if (currentTierIndex === 0) { // Working toward first tier (0-3)
+        return Math.min(Math.floor((currentValue / 3) * 100), 100);
+      } else if (currentTierIndex === 1) { // Working toward second tier (3-5)
+        return Math.min(Math.floor(((currentValue - 3) / 2) * 100), 100);
+      } else if (currentTierIndex === 2) { // Working toward third tier (5-7)
+        return Math.min(Math.floor(((currentValue - 5) / 2) * 100), 100);
+      }
+      
+      return 100; // Fallback
+    }
+    
+    // Standard progress calculation for other achievements
+    // If we're between tiers, calculate progress toward the next tier
+    if (currentTierIndex < achievement.tiers.length - 1) {
+      const prevRequirement = currentTierIndex > 0 
+        ? achievement.tiers[currentTierIndex].requirement 
+        : 0;
+      const nextRequirement = nextTier.requirement;
+      const adjustedValue = currentValue - prevRequirement;
+      const adjustedTotal = nextRequirement - prevRequirement;
+      
+      return Math.min(Math.floor((adjustedValue / adjustedTotal) * 100), 100);
+    }
+    
+    return 100; // All tiers completed
+  };
+  
+  const getNextAchievement = (achievementId: string): AchievementTier | null => {
+    const achievement = stats.achievements.find(a => a.id === achievementId);
+    if (!achievement) return null;
+    
+    // Find the next locked tier
+    const nextTier = achievement.tiers.find(tier => !tier.unlocked);
+    return nextTier || null;
+  };
+
+  // Fast forward function for testing achievements
+  const fastForwardSessions = (numSessions: number, focusTimePerSession: number) => {
+    // Create a copy of the current stats
+    const newStats = { ...stats };
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Find or create today's stats
+    let todayStats = newStats.dailyStats.find(day => day.date === today);
+    if (!todayStats) {
+      todayStats = {
+        date: today,
+        completedSessions: 0,
+        totalFocusTime: 0,
+        totalPauseTime: 0
+      };
+      newStats.dailyStats.push(todayStats);
+    }
+    
+    // Update stats
+    newStats.completedSessions += numSessions;
+    newStats.totalSessions += numSessions;
+    newStats.totalFocusTime += numSessions * focusTimePerSession;
+    
+    // Update today's stats
+    todayStats.completedSessions += numSessions;
+    todayStats.totalFocusTime += numSessions * focusTimePerSession;
+    
+    // Create simulated session history entries
+    for (let i = 0; i < numSessions; i++) {
+      const startTime = new Date();
+      startTime.setMinutes(startTime.getMinutes() - (i + 1) * 30); // Stagger start times
+      
+      const targetEndTime = new Date(startTime);
+      targetEndTime.setSeconds(targetEndTime.getSeconds() + focusTimePerSession);
+      
+      const sessionId = `test-${Date.now()}-${i}`;
+      const newSession: SessionData = {
+        id: sessionId,
+        type: 'pomodoro',
+        startTime: startTime.toISOString(),
+        endTime: targetEndTime.toISOString(),
+        targetEndTime: targetEndTime.toISOString(),
+        duration: focusTimePerSession,
+        pausedAt: null,
+        totalPausedTime: 0,
+        completed: true
+      };
+      
+      newStats.sessionHistory.push(newSession);
+    }
+    
+    // Update streak if needed
+    if (newStats.currentStreak === 0) {
+      newStats.currentStreak = 1;
+      if (newStats.longestStreak < 1) {
+        newStats.longestStreak = 1;
+      }
+    }
+    
+    // Save updated stats
+    setStats(newStats);
+    localStorage.setItem('focusTimerStats', JSON.stringify(newStats));
+    
+    // Check achievements with the new stats
+    checkAchievements();
+  };
+
   return (
     <DataContext.Provider value={{
       stats,
       currentSession,
       startSession,
       pauseSession,
+      fastForwardSessions,
       resumeSession,
       completeSession,
       cancelSession,
-      resetStats
+      resetStats,
+      checkAchievements,
+      getUnlockedAchievements,
+      getAchievementProgress,
+      getNextAchievement
     }}>
       {children}
     </DataContext.Provider>

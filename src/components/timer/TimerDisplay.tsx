@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ProgressIndicator from '../feedback/ProgressIndicator';
 import TimerControls from './TimerControls';
-import { ToastContainer, toast } from 'react-toastify';
+import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { useSettings } from '../../context/SettingsContext';
 import { useData, calculateRemainingTime } from '../../context/DataContext';
@@ -134,7 +134,7 @@ const TimerDisplay: React.FC = () => {
       if (isActive && !isPaused && wasInactive && !currentSession) {
         // Only create a new session if one doesn't already exist
         startSession(settings.activePreset, initialDuration);
-        notify('Session started', 'success');
+        // Note: Session started notification is now handled in handleStart to avoid duplication
         
         // Play clock start sound if sound is enabled
         if (settings.soundEnabled) {
@@ -180,6 +180,7 @@ const TimerDisplay: React.FC = () => {
       setIsActive(true);
       setIsPaused(false);
       // Session creation is handled in the state change effect
+      notify('Session started', 'success');
     } else if (isPaused) {
       // Resume if paused
       setIsPaused(false);
@@ -236,17 +237,7 @@ const TimerDisplay: React.FC = () => {
           </>
         )}
         
-        <ToastContainer 
-          position="top-right" 
-          autoClose={5000} 
-          hideProgressBar={false} 
-          newestOnTop={false} 
-          closeOnClick 
-          rtl={false} 
-          pauseOnFocusLoss 
-          draggable 
-          pauseOnHover 
-        />
+        {/* ToastContainer removed - using the global one from App.tsx */}
       </div>
     </ErrorBoundary>
   );

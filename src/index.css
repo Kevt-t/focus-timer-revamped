@@ -10,3 +10,32 @@
     90% { transform: scale(1); }
     100% { transform: scale(1.2); opacity: 0; }
 }
+
+/* Toggle Switch Styles */
+.toggle-checkbox {
+    right: 0;
+    z-index: 5;
+    transition: all 0.3s;
+}
+
+.toggle-checkbox:checked {
+    right: 0;
+    border-color: #68D391;
+}
+
+.toggle-checkbox:checked + .toggle-label {
+    background-color: #68D391;
+}
+
+.toggle-label {
+    transition: background-color 0.2s ease;
+}
+
+/* Dark mode support */
+.dark .toggle-checkbox:checked {
+    border-color: #4fd1c5;
+}
+
+.dark .toggle-checkbox:checked + .toggle-label {
+    background-color: #4fd1c5;
+}

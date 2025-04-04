@@ -9,18 +9,25 @@ const StatsDisplay: React.FC = () => {
   const todayStats = stats.dailyStats.find(day => day.date === today) || {
     date: today,
     completedSessions: 0,
-    totalFocusTime: 0
+    totalFocusTime: 0,
+    totalPauseTime: 0
   };
   
-  // Format time (seconds) to hours and minutes
+  // Format time (seconds) to hours, minutes, and seconds
   const formatTime = (seconds: number): string => {
+    if (seconds === 0) return '0m';
+    
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
     
     if (hours > 0) {
       return `${hours}h ${minutes}m`;
     }
-    return `${minutes}m`;
+    if (minutes > 0) {
+      return `${minutes}m${secs > 0 ? ' ' + secs + 's' : ''}`;
+    }
+    return `${secs}s`;
   };
 
   return (
@@ -36,6 +43,25 @@ const StatsDisplay: React.FC = () => {
         <div className="stat-card p-3 bg-green-50 dark:bg-green-900 rounded-lg">
           <div className="text-sm text-green-500 dark:text-green-300">Today's Focus Time</div>
           <div className="text-2xl font-bold text-green-700 dark:text-green-100">{formatTime(todayStats.totalFocusTime)}</div>
+        </div>
+        
+        <div className="stat-card p-3 bg-red-50 dark:bg-red-900 rounded-lg">
+          <div className="text-sm text-red-500 dark:text-red-300">Today's Pause Time</div>
+          <div className="text-2xl font-bold text-red-700 dark:text-red-100">
+            {formatTime(todayStats.totalPauseTime)}
+            {todayStats.totalPauseTime === 0 && <span className="text-xs ml-2">(No pauses)</span>}
+          </div>
+        </div>
+        
+        <div className="stat-card p-3 bg-indigo-50 dark:bg-indigo-900 rounded-lg">
+          <div className="text-sm text-indigo-500 dark:text-indigo-300">Focus/Pause Ratio</div>
+          <div className="text-2xl font-bold text-indigo-700 dark:text-indigo-100">
+            {todayStats.totalPauseTime > 0 
+              ? (todayStats.totalFocusTime / todayStats.totalPauseTime).toFixed(1) + ':1'
+              : '∞'}
+            {todayStats.totalPauseTime === 0 && todayStats.totalFocusTime > 0 && 
+              <span className="text-xs ml-2">(Perfect focus)</span>}
+          </div>
         </div>
         
         <div className="stat-card p-3 bg-purple-50 dark:bg-purple-900 rounded-lg">
@@ -64,6 +90,36 @@ const StatsDisplay: React.FC = () => {
             </div>
           </div>
         </div>
+        
+        {/* Focus vs Pause Time Visualization */}
+        <div className="mt-4">
+          <h4 className="text-sm text-gray-500 dark:text-gray-400 mb-1">Today's Focus vs. Pause Time</h4>
+          <div className="relative h-6 bg-yellow-400 dark:bg-yellow-600 rounded-full overflow-hidden">
+            {todayStats.totalFocusTime > 0 || todayStats.totalPauseTime > 0 ? (
+              <>
+                <div 
+                  className="absolute top-0 left-0 h-full bg-green-500 dark:bg-green-600"
+                  style={{
+                    width: `${(todayStats.totalFocusTime / (todayStats.totalFocusTime + todayStats.totalPauseTime)) * 100}%`
+                  }}
+                ></div>
+                <div className="absolute top-0 left-0 h-full w-full flex justify-between items-center px-2">
+                  <span className="text-xs font-medium text-white z-10">
+                    Focus: {formatTime(todayStats.totalFocusTime)}
+                  </span>
+                  <span className="text-xs font-medium text-white z-10">
+                    Pause: {formatTime(todayStats.totalPauseTime)}
+                    {todayStats.totalPauseTime === 0 && <span className="ml-1">(None)</span>}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="absolute top-0 left-0 h-full w-full flex justify-center items-center">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">No data yet</span>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
       
       {stats.dailyStats.length > 0 && (
@@ -78,6 +134,7 @@ const StatsDisplay: React.FC = () => {
                 <div className="flex space-x-4">
                   <div className="text-blue-600 dark:text-blue-400">{day.completedSessions} sessions</div>
                   <div className="text-green-600 dark:text-green-400">{formatTime(day.totalFocusTime)}</div>
+                  <div className="text-red-600 dark:text-red-400">{formatTime(day.totalPauseTime)} paused</div>
                 </div>
               </div>
             ))}

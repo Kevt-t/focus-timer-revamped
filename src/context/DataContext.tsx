@@ -17,6 +17,7 @@ export interface DailyStats {
   date: string;
   completedSessions: number;
   totalFocusTime: number; // in seconds
+  totalPauseTime: number; // in seconds
 }
 
 export interface UserStats {
@@ -206,14 +207,16 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
         updatedDailyStats[existingDailyStatIndex] = {
           ...existingStat,
           completedSessions: existingStat.completedSessions + 1,
-          totalFocusTime: existingStat.totalFocusTime + session.duration
+          totalFocusTime: existingStat.totalFocusTime + session.duration,
+          totalPauseTime: existingStat.totalPauseTime + Math.floor(session.totalPausedTime / 1000) // Convert ms to seconds
         };
       } else {
         // Create new daily stat
         updatedDailyStats.push({
           date: sessionDate,
           completedSessions: 1,
-          totalFocusTime: session.duration
+          totalFocusTime: session.duration,
+          totalPauseTime: Math.floor(session.totalPausedTime / 1000) // Convert ms to seconds
         });
       }
 
@@ -261,11 +264,21 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
 
   const completeSession = () => {
     if (!currentSession) return;
+    
+    // Ensure we have the most up-to-date pause time
+    // If the session is paused when completed, add the final pause duration
+    let finalPausedTime = currentSession.totalPausedTime;
+    if (currentSession.pausedAt) {
+      const now = new Date();
+      const pausedAt = new Date(currentSession.pausedAt);
+      finalPausedTime += (now.getTime() - pausedAt.getTime());
+    }
 
     const completedSession: SessionData = {
       ...currentSession,
       endTime: new Date().toISOString(),
-      completed: true
+      completed: true,
+      totalPausedTime: finalPausedTime
     };
 
     // Update session history

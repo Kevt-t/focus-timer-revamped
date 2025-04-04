@@ -7,6 +7,9 @@ import { useSettings } from '../../context/SettingsContext';
 import { useData, calculateRemainingTime } from '../../context/DataContext';
 import StatsDisplay from '../data/StatsDisplay';
 import ErrorBoundary from '../common/ErrorBoundary';
+// Import audio files
+import clockStartSound from '../../assets/clockStart.mp3';
+import clockEndSound from '../../assets/clockEnd.mp3';
 
 // TimerDisplay component manages the display and control of the timer
 // It uses context for settings and data persistence
@@ -56,9 +59,27 @@ const TimerDisplay: React.FC = () => {
     }
   }, [settings.notificationsEnabled]);
 
+  // Reference to the end sound audio element
+  const endSoundRef = useRef<HTMLAudioElement | null>(null);
+  
+  // Initialize end sound
+  useEffect(() => {
+    if (settings.soundEnabled) {
+      endSoundRef.current = new Audio(clockEndSound);
+    }
+    
+    return () => {
+      if (endSoundRef.current) {
+        endSoundRef.current.pause();
+        endSoundRef.current = null;
+      }
+    };
+  }, [settings.soundEnabled]);
+  
   // Timer effect - uses time-based approach for persistence across page refreshes
   useEffect(() => {
     let interval: number | undefined;
+    let endSoundPlayed = false;
     
     if (isActive && !isPaused) {
       // Update time immediately based on current session
@@ -76,18 +97,20 @@ const TimerDisplay: React.FC = () => {
           setTime(remainingTime);
           setPercentage(((currentSession.duration - remainingTime) / currentSession.duration) * 100);
           
+          // Play end sound when timer is about to end (3 seconds remaining)
+          if (settings.soundEnabled && remainingTime <= 3 && remainingTime > 0 && !endSoundPlayed) {
+            if (endSoundRef.current) {
+              endSoundRef.current.currentTime = 0;
+              endSoundRef.current.play().catch(e => console.error('Error playing end sound:', e));
+              endSoundPlayed = true;
+            }
+          }
+          
           // Check if timer has reached zero
           if (remainingTime <= 0) {
             window.clearInterval(interval);
             setIsActive(false);
             completeSession();
-            
-            // Play sound if enabled
-            if (settings.soundEnabled) {
-              const audio = new Audio('/notification.mp3');
-              audio.play().catch(e => console.error('Error playing sound:', e));
-            }
-            
             notify('Session completed!', 'success');
           }
         }
@@ -112,6 +135,12 @@ const TimerDisplay: React.FC = () => {
         // Only create a new session if one doesn't already exist
         startSession(settings.activePreset, initialDuration);
         notify('Session started', 'success');
+        
+        // Play clock start sound if sound is enabled
+        if (settings.soundEnabled) {
+          const audio = new Audio(clockStartSound);
+          audio.play().catch(e => console.error('Error playing sound:', e));
+        }
       }
       // Pausing the timer (active & not paused -> active & paused)
       else if (isActive && isPaused && !wasPaused) {

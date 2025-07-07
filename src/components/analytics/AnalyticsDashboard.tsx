@@ -1,46 +1,56 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
 import FocusChart from './FocusChart';
 import StreakChart from './StreakChart';
 import StatsSummary from './StatsSummary';
 
-type TimeRange = 'daily' | 'weekly' | 'monthly' | 'all';
+type TimeRange = 'week' | 'month' | 'quarter' | 'all';
 
 const AnalyticsDashboard: React.FC = () => {
   const { stats } = useData();
-  const [timeRange, setTimeRange] = useState<TimeRange>('weekly');
+  const [timeRange, setTimeRange] = useState<TimeRange>('month');
+  const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({ start: new Date(), end: new Date() });
   
-  // Get the date range based on the selected time range
-  const getDateRange = (): { start: Date; end: Date } => {
+  // Calculate date range whenever timeRange or stats change
+  useEffect(() => {
     const end = new Date();
     const start = new Date();
     
     switch (timeRange) {
-      case 'daily':
+      case 'week':
         start.setDate(end.getDate() - 7); // Last 7 days
         break;
-      case 'weekly':
+      case 'month':
         start.setDate(end.getDate() - 30); // Last 30 days
         break;
-      case 'monthly':
+      case 'quarter':
         start.setDate(end.getDate() - 90); // Last 90 days
         break;
       case 'all':
-        // Find the earliest session date
-        if (stats.sessionHistory.length > 0) {
-          const dates = stats.sessionHistory.map(s => new Date(s.startTime));
-          const earliestDate = new Date(Math.min(...dates.map(d => d.getTime())));
-          start.setTime(earliestDate.getTime());
+        // Find the earliest date between session history and daily stats
+        if (stats.sessionHistory.length > 0 || stats.dailyStats.length > 0) {
+          const sessionDates = stats.sessionHistory.map(s => new Date(s.startTime));
+          const statsDates = stats.dailyStats.map(d => new Date(d.date));
+          const allDates = [...sessionDates, ...statsDates];
+          
+          if (allDates.length > 0) {
+            const earliestDate = new Date(Math.min(...allDates.map(d => d.getTime())));
+            start.setTime(earliestDate.getTime());
+          } else {
+            start.setDate(end.getDate() - 30); // Default to 30 days if no history
+          }
         } else {
           start.setDate(end.getDate() - 30); // Default to 30 days if no history
         }
         break;
     }
     
-    return { start, end };
-  };
-  
-  const dateRange = getDateRange();
+    // For debugging
+    console.log(`Date range: ${start.toISOString()} - ${end.toISOString()}`);
+    console.log(`Daily stats available: ${stats.dailyStats.length} days`);
+    
+    setDateRange({ start, end });
+  }, [timeRange, stats.sessionHistory, stats.dailyStats]);
   
   return (
     <div className="analytics-dashboard">
@@ -49,33 +59,33 @@ const AnalyticsDashboard: React.FC = () => {
         <div className="flex space-x-2">
           <button 
             className={`px-3 py-1 text-sm rounded-full ${
-              timeRange === 'daily' 
+              timeRange === 'week' 
                 ? 'bg-blue-500 text-white' 
                 : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
             }`}
-            onClick={() => setTimeRange('daily')}
+            onClick={() => setTimeRange('week')}
           >
-            Daily
+            Last Week
           </button>
           <button 
             className={`px-3 py-1 text-sm rounded-full ${
-              timeRange === 'weekly' 
+              timeRange === 'month' 
                 ? 'bg-blue-500 text-white' 
                 : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
             }`}
-            onClick={() => setTimeRange('weekly')}
+            onClick={() => setTimeRange('month')}
           >
-            Weekly
+            Last Month
           </button>
           <button 
             className={`px-3 py-1 text-sm rounded-full ${
-              timeRange === 'monthly' 
+              timeRange === 'quarter' 
                 ? 'bg-blue-500 text-white' 
                 : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
             }`}
-            onClick={() => setTimeRange('monthly')}
+            onClick={() => setTimeRange('quarter')}
           >
-            Monthly
+            Last 90 Days
           </button>
           <button 
             className={`px-3 py-1 text-sm rounded-full ${
@@ -112,19 +122,32 @@ const AnalyticsDashboard: React.FC = () => {
           <button 
             className="text-blue-500 hover:text-blue-600 text-sm"
             onClick={() => {
-              // Export data as CSV
-              const csvData = stats.dailyStats.map(day => 
+              // Get the filtered data based on current date range
+              const filteredData = stats.dailyStats.filter(day => {
+                const dayDate = new Date(day.date);
+                return dayDate >= dateRange.start && dayDate <= dateRange.end;
+              });
+              
+              // Export filtered data as CSV
+              const csvData = filteredData.map(day => 
                 `${day.date},${day.completedSessions},${day.totalFocusTime},${day.totalPauseTime}`
               ).join('\n');
               
+              // Build CSV header
               const header = 'Date,Completed Sessions,Total Focus Time (s),Total Pause Time (s)\n';
               const csv = header + csvData;
               
+              // Create and download CSV file
               const blob = new Blob([csv], { type: 'text/csv' });
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = url;
-              a.download = 'focus-timer-data.csv';
+              
+              // Add date range to filename
+              const startStr = dateRange.start.toISOString().split('T')[0];
+              const endStr = dateRange.end.toISOString().split('T')[0];
+              a.download = `focus-timer-data-${startStr}-to-${endStr}.csv`;
+              
               document.body.appendChild(a);
               a.click();
               document.body.removeChild(a);
@@ -152,7 +175,6 @@ const AnalyticsDashboard: React.FC = () => {
                   return dayDate >= dateRange.start && dayDate <= dateRange.end;
                 })
                 .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                .slice(0, 10) // Show only the last 10 days
                 .map(day => {
                   // Calculate efficiency (focus time / (focus time + pause time))
                   const totalTime = day.totalFocusTime + day.totalPauseTime;
